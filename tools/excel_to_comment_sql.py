@@ -83,9 +83,38 @@ def get_comment(row, cols: dict) -> str:
     return ""
 
 
+def normalize_type(dtype: str) -> str:
+    """MySQL 8.0 deprecated 타입 표기 정규화.
+
+    - INT(11), BIGINT(20) 등 정수형 display width 제거  → INT, BIGINT
+    - DOUBLE(10,2), FLOAT(8,2) 등 부동소수점 정밀도 제거 → DOUBLE, FLOAT
+    - TINYINT(1) 은 boolean 관용 표기이므로 그대로 유지
+    - DECIMAL(18,2), VARCHAR(50) 등 의미 있는 정밀도/길이는 유지
+    """
+    import re
+
+    upper = dtype.upper().strip()
+
+    # 정수형: TINYINT(1) 은 유지, 나머지 정수형 display width 제거
+    int_types = r"^(SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT)(\(\d+\))(\s+UNSIGNED)?$"
+    m = re.match(int_types, upper)
+    if m:
+        unsigned = m.group(3) or ""
+        return f"{m.group(1)}{unsigned.rstrip()}"
+
+    # 부동소수점 정밀도 제거: DOUBLE(M,D), FLOAT(M,D)
+    float_types = r"^(DOUBLE|FLOAT)(\(\d+,\d+\))(\s+UNSIGNED)?$"
+    m = re.match(float_types, upper)
+    if m:
+        unsigned = m.group(3) or ""
+        return f"{m.group(1)}{unsigned.rstrip()}"
+
+    return dtype.upper()
+
+
 def build_type_str(row, cols: dict) -> str:
     """데이터 타입 + 길이 문자열 조합"""
-    dtype = normalize(row.get(cols.get("data_type", ""), "")).upper()
+    dtype = normalize(row.get(cols.get("data_type", ""), ""))
     length = normalize(row.get(cols.get("length", ""), ""))
 
     if not dtype:
@@ -93,16 +122,13 @@ def build_type_str(row, cols: dict) -> str:
 
     # 길이가 이미 타입에 포함된 경우 (VARCHAR(100) 형태)
     if "(" in dtype:
-        return dtype
+        return normalize_type(dtype)
 
     # 길이 정보가 별도 컬럼에 있는 경우
     if length and length not in ("0", "-"):
-        # DECIMAL(18,2) 형태 처리
-        if "," in length:
-            return f"{dtype}({length})"
-        return f"{dtype}({length})"
+        return normalize_type(f"{dtype}({length})")
 
-    return dtype
+    return normalize_type(dtype)
 
 
 def is_nullable(row, cols: dict) -> bool | None:
@@ -175,6 +201,16 @@ def generate_sql(df: pd.DataFrame) -> list[str]:
             nullable = is_nullable(row, cols)
             default_val = build_default(row, cols)
 
+            # extra 컬럼에서 AUTO_INCREMENT 여부 확인
+            extra_col = cols.get("pk")  # column_key 재사용 대신 extra 별도 처리
+            extra_val = ""
+            # COLUMN_MAP 에 "extra" 키가 있으면 사용, 없으면 "extra" 헤더 직접 탐색
+            for candidate in ("extra",):
+                if candidate in df.columns:
+                    extra_val = normalize(row.get(candidate, "")).upper()
+                    break
+            auto_inc = " AUTO_INCREMENT" if "AUTO_INCREMENT" in extra_val else ""
+
             if type_str:
                 null_part = ""
                 if nullable is True:
@@ -183,10 +219,9 @@ def generate_sql(df: pd.DataFrame) -> list[str]:
                     null_part = " NOT NULL"
                 modify_line = (
                     f"    MODIFY COLUMN `{column}` {type_str}{null_part}"
-                    f"{default_val} COMMENT '{escape_comment(comment)}'"
+                    f"{default_val}{auto_inc} COMMENT '{escape_comment(comment)}'"
                 )
             else:
-                # 타입 정보 없으면 COMMENT만
                 modify_line = f"    MODIFY COLUMN `{column}` COMMENT '{escape_comment(comment)}'"
         else:
             modify_line = f"    MODIFY COLUMN `{column}` COMMENT '{escape_comment(comment)}'"
