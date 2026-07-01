@@ -141,18 +141,36 @@ def is_nullable(row, cols: dict) -> bool | None:
 
 
 def escape_comment(text: str) -> str:
-    """COMMENT 문자열 내 작은따옴표 이스케이프"""
-    return text.replace("'", "\\'")
+    """COMMENT 문자열 정제 및 이스케이프.
+    - 셀 내 줄바꿈(Alt+Enter 등) → 공백으로 치환
+    - 작은따옴표 이스케이프
+    """
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("'", "\\'")
+    return text.strip()
+
+
+# TEXT/BLOB 계열은 DEFAULT 값을 지정할 수 없음 (MySQL 제약)
+_NO_DEFAULT_TYPES = {"tinytext", "text", "mediumtext", "longtext",
+                     "tinyblob", "blob", "mediumblob", "longblob", "json"}
 
 
 def build_default(row, cols: dict) -> str:
-    """DEFAULT 절 문자열 반환. 값이 없으면 빈 문자열."""
+    """DEFAULT 절 문자열 반환. 값이 없거나 TEXT/BLOB 타입이면 빈 문자열."""
     col = cols.get("default_val")
     if not col:
         return ""
     val = normalize(row.get(col, ""))
     if not val or val.upper() == "NAN":
         return ""
+
+    # TEXT/BLOB/JSON 계열은 DEFAULT 불가
+    type_col = cols.get("data_type")
+    if type_col:
+        base_type = normalize(row.get(type_col, "")).lower().split("(")[0].strip()
+        if base_type in _NO_DEFAULT_TYPES:
+            return ""
+
     # NULL 키워드는 따옴표 없이
     if val.upper() == "NULL":
         return " DEFAULT NULL"
