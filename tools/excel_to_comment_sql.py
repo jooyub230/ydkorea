@@ -258,7 +258,24 @@ def main():
 
     if args.dry_run:
         print_column_preview(df)
-        print("[DRY-RUN] 엑셀 구조 확인 완료. COLUMN_MAP 을 수정한 뒤 다시 실행하세요.")
+        # 현재 COLUMN_MAP 매핑 상태 확인
+        _df_check = df
+
+        print("[ COLUMN_MAP 매핑 상태 ]")
+        all_ok = True
+        for key, mapped in COLUMN_MAP.items():
+            if mapped is None:
+                print(f"  {key:15}: (사용 안 함)")
+            elif mapped in _df_check.columns:
+                print(f"  {key:15}: '{mapped}' ✓")
+            else:
+                print(f"  {key:15}: '{mapped}' ✗  ← 엑셀에 없는 컬럼명!")
+                all_ok = False
+
+        if all_ok:
+            print("\n[DRY-RUN] 매핑 확인 완료. --dry-run 을 제거하고 다시 실행하면 SQL 이 생성됩니다.")
+        else:
+            print("\n[DRY-RUN] ✗ 표시된 항목의 COLUMN_MAP 값을 엑셀 컬럼명에 맞게 수정하세요.")
         return
 
     sql_blocks = generate_sql(df)
