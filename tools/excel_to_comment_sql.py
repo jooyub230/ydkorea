@@ -30,29 +30,29 @@ SHEET_NAME = None
 # 엑셀 컬럼 헤더명 매핑
 # 키: 스크립트 내부 식별자 / 값: 실제 엑셀 헤더 문자열 (없으면 None)
 COLUMN_MAP = {
-    "table_phys":  "table_name",      # 물리 테이블명 (영문)          예: ytable1
-    "table_logic": "table_comment",   # 테이블 한글명                  예: 납세자정보
-    "col_phys":    "column",          # 물리 컬럼명                    예: field1
+    "table_phys":  "table_name",      # 물리 테이블명 (영문)           예: ytable1
+    "table_logic": "table_comment",   # 테이블 한글명                   예: 납세자정보
+    "col_phys":    "column_name",     # 물리 컬럼명                     예: field1
     "col_logic":   None,              # 컬럼 한글명 별도 컬럼 없음
-    "data_type":   None,              # 타입 컬럼 없음
-    "length":      None,              # 길이 컬럼 없음
-    "nullable":    None,              # NULL 여부 컬럼 없음
-    "pk":          None,              # PK 컬럼 없음 (col_key 는 참고용)
-    "default_val": None,              # 기본값 컬럼 없음
-    "comment":     "column_comment",  # COMMENT 로 사용할 컬럼         예: 납세자명
+    "data_type":   "column_type",     # 전체 타입 문자열                 예: varchar(6), double
+    "length":      None,              # 길이는 column_type 에 포함되어 있음
+    "nullable":    "is_nullable",     # NULL 허용 여부                  YES / NO
+    "pk":          "column_key",      # 키 타입                        PRI / MUL
+    "default_val": "column_default",  # 기본값
+    "comment":     "column_comment",  # COMMENT 로 사용할 컬럼          예: 납세자번호
 }
 
 # COMMENT 로 사용할 컬럼 우선순위: "comment" → "col_logic" 순서로 fallback
 COMMENT_PRIORITY = ["comment", "col_logic", "table_logic"]
 
 # NULL 허용으로 간주할 값 목록 (대소문자 무시)
-NULLABLE_VALUES = {"y", "null", "nullable", "yes", "true", "1", ""}
+# is_nullable = YES → NULL 허용 / NO → NOT NULL
+NULLABLE_VALUES = {"y", "yes", "null", "nullable", "true", "1", ""}
 
 # 타입 재구성 여부
-# True  → 엑셀의 타입+길이 정보로 MODIFY COLUMN 에 타입을 포함
-# False → COMMENT 변경만 생성 (타입 정보 생략, 가장 안전)
-# ※ 현재 명세서에 타입 컬럼이 없으므로 False 권장
-INCLUDE_TYPE_IN_MODIFY = False
+# True  → column_type + is_nullable 로 MODIFY COLUMN 에 타입 포함 (권장)
+# False → COMMENT 변경만 생성 (타입 정보 생략)
+INCLUDE_TYPE_IN_MODIFY = True
 
 # ─────────────────────────────────────────────
 
@@ -119,6 +119,25 @@ def escape_comment(text: str) -> str:
     return text.replace("'", "\\'")
 
 
+def build_default(row, cols: dict) -> str:
+    """DEFAULT 절 문자열 반환. 값이 없으면 빈 문자열."""
+    col = cols.get("default_val")
+    if not col:
+        return ""
+    val = normalize(row.get(col, ""))
+    if not val or val.upper() == "NAN":
+        return ""
+    # NULL 키워드는 따옴표 없이
+    if val.upper() == "NULL":
+        return " DEFAULT NULL"
+    # 숫자면 따옴표 없이
+    try:
+        float(val)
+        return f" DEFAULT {val}"
+    except ValueError:
+        return f" DEFAULT '{escape_comment(val)}'"
+
+
 def generate_sql(df: pd.DataFrame) -> list[str]:
     """데이터프레임 → ALTER TABLE SQL 목록 생성"""
 
@@ -154,6 +173,7 @@ def generate_sql(df: pd.DataFrame) -> list[str]:
         if INCLUDE_TYPE_IN_MODIFY:
             type_str = build_type_str(row, cols)
             nullable = is_nullable(row, cols)
+            default_val = build_default(row, cols)
 
             if type_str:
                 null_part = ""
@@ -161,7 +181,10 @@ def generate_sql(df: pd.DataFrame) -> list[str]:
                     null_part = " NULL"
                 elif nullable is False:
                     null_part = " NOT NULL"
-                modify_line = f"    MODIFY COLUMN `{column}` {type_str}{null_part} COMMENT '{escape_comment(comment)}'"
+                modify_line = (
+                    f"    MODIFY COLUMN `{column}` {type_str}{null_part}"
+                    f"{default_val} COMMENT '{escape_comment(comment)}'"
+                )
             else:
                 # 타입 정보 없으면 COMMENT만
                 modify_line = f"    MODIFY COLUMN `{column}` COMMENT '{escape_comment(comment)}'"
