@@ -234,7 +234,13 @@ def generate_sql(df: pd.DataFrame) -> list[str]:
     # SQL 생성
     sql_blocks = []
     for table, lines in groups.items():
-        block = f"ALTER TABLE `{table}`\n" + ",\n".join(lines) + ";\n"
+        # 스키마명이 포함된 경우(예: propert4x_db.ytable10) 각각 백틱으로 감쌈
+        if "." in table:
+            schema, tbl = table.split(".", 1)
+            table_ref = f"`{schema}`.`{tbl}`"
+        else:
+            table_ref = f"`{table}`"
+        block = f"ALTER TABLE {table_ref}\n" + ",\n".join(lines) + ";\n"
         sql_blocks.append(block)
 
     return sql_blocks
