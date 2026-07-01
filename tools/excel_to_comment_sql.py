@@ -28,18 +28,18 @@ HEADER_ROW = 0
 SHEET_NAME = None
 
 # 엑셀 컬럼 헤더명 매핑
-# 키: 스크립트 내부 식별자 / 값: 실제 엑셀 헤더 문자열
+# 키: 스크립트 내부 식별자 / 값: 실제 엑셀 헤더 문자열 (없으면 None)
 COLUMN_MAP = {
-    "table_phys":  "테이블명",          # 물리 테이블명 (영문)
-    "table_logic": "테이블논리명",       # 테이블 한글명 (없으면 None)
-    "col_phys":    "컬럼명",            # 물리 컬럼명 (영문)
-    "col_logic":   "컬럼논리명",         # 컬럼 한글명 → COMMENT 값으로 사용
-    "data_type":   "데이터타입",         # 컬럼 데이터 타입
-    "length":      "길이",              # 길이/정밀도 (없으면 None)
-    "nullable":    "NULL여부",          # NULL 허용 여부 (Y/N, NULL/NOT NULL 등)
-    "pk":          "PK",               # PK 여부 (선택)
-    "default_val": "기본값",            # DEFAULT 값 (선택)
-    "comment":     "설명",             # COMMENT 로 사용할 컬럼 (col_logic 과 다를 경우 지정)
+    "table_phys":  "table_name",      # 물리 테이블명 (영문)          예: ytable1
+    "table_logic": "table_comment",   # 테이블 한글명                  예: 납세자정보
+    "col_phys":    "column",          # 물리 컬럼명                    예: field1
+    "col_logic":   None,              # 컬럼 한글명 별도 컬럼 없음
+    "data_type":   None,              # 타입 컬럼 없음
+    "length":      None,              # 길이 컬럼 없음
+    "nullable":    None,              # NULL 여부 컬럼 없음
+    "pk":          None,              # PK 컬럼 없음 (col_key 는 참고용)
+    "default_val": None,              # 기본값 컬럼 없음
+    "comment":     "column_comment",  # COMMENT 로 사용할 컬럼         예: 납세자명
 }
 
 # COMMENT 로 사용할 컬럼 우선순위: "comment" → "col_logic" 순서로 fallback
@@ -51,7 +51,8 @@ NULLABLE_VALUES = {"y", "null", "nullable", "yes", "true", "1", ""}
 # 타입 재구성 여부
 # True  → 엑셀의 타입+길이 정보로 MODIFY COLUMN 에 타입을 포함
 # False → COMMENT 변경만 생성 (타입 정보 생략, 가장 안전)
-INCLUDE_TYPE_IN_MODIFY = True
+# ※ 현재 명세서에 타입 컬럼이 없으므로 False 권장
+INCLUDE_TYPE_IN_MODIFY = False
 
 # ─────────────────────────────────────────────
 
